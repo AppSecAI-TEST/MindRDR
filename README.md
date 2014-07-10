@@ -7,15 +7,18 @@ If you want to get in touch for whatever reason email mindrdr@thisplace.com
 
 If you want to compile and use this code you'll need:
 
-Google Glass and a MindWave Mobile device
-A Twitter dev account to add app key/secret + consumer key/secret
+* Google Glass
+* MindWave Mobile device
+* A Twitter dev account to add app key/secret + consumer key/secret
 
 This code is only meant for reference purposes at the moment. It relies on Twitter application settings, web services and bespoke UI.
 
-Note:
+## Note
 
 MindRDR has been built just for Glass at the moment, therefore view logic is fixed dimension with no rotation handled.
+
 Error handling in general is minimal effort.
+
 There are webservice dependencies that could change.
 
 If you have the right hardware and you want to use the app then we'll be making available a compiled version with Twitter linking outside of GitHub soon.
