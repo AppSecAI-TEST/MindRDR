@@ -30,3 +30,7 @@ proguard/
 *.iws
 .idea/workspace.xml
 .idea/tasks.xml
+
+*/.DS_Store
+.DS_Store
+.DS_Store?
