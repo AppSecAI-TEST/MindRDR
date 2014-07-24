@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="360px"
+    android:layout_margin="0px"
+    android:layout_marginBottom="0px"
+    android:layout_marginLeft="0px"
+    android:layout_marginRight="0px"
+    android:layout_marginTop="0px"
+    android:padding="0px"
+    android:paddingBottom="0px"
+    android:paddingLeft="0px"
+    android:paddingRight="0px"
+    android:paddingStart="0px"
+    android:paddingTop="0px"
+    android:translationX="0px"
+    android:translationY="0px"
+    android:id="@+id/mind_reader_container"
+    >
+
+
+
+    <ImageView
+        android:id="@+id/take_photo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:src="@drawable/take_photo_bg"
+       />
+
+    <ImageView
+        android:id="@+id/line"
+
+        android:layout_width="510px"
+        android:layout_height="2px"
+        android:src="@drawable/line"
+        android:translationX="65px"
+        android:translationY="280px"
+       />
+
+
+    <TextView
+        android:id="@+id/confirm_txt"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:gravity="center_horizontal"
+
+
+        />
+
+    <TextView
+        android:id="@+id/cancel_txt"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:gravity="center_horizontal" />
+
+
+
+
+
+
+</FrameLayout>
+

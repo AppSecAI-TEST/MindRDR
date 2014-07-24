@@ -1,12 +1,10 @@
 package com.thisplace.mindrdr;
 
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
-import android.animation.AnimatorSet;
-import android.animation.ObjectAnimator;
 import android.app.Activity;
+import android.app.FragmentTransaction;
 import android.bluetooth.BluetoothAdapter;
 import android.content.Context;
+import android.content.Intent;
 import android.hardware.Camera;
 import android.hardware.Camera.PictureCallback;
 import android.media.AudioManager;
@@ -17,20 +15,22 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
-import android.view.View;
+import android.view.KeyEvent;
 import android.view.WindowManager;
-import android.view.animation.Animation;
-import android.view.animation.AnimationUtils;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.ProgressBar;
-import android.widget.TextView;
+
 import android.widget.Toast;
 
 import com.google.android.glass.media.Sounds;
 import com.neurosky.thinkgear.TGDevice;
 import com.thisplace.mindrdr.model.MindSession;
+import com.thisplace.mindrdr.services.MindReader;
+import com.thisplace.mindrdr.services.MindReaderFactory;
+import com.thisplace.mindrdr.model.OAuthData;
+import com.thisplace.mindrdr.view.CameraFlashFragment;
+import com.thisplace.mindrdr.view.MindReaderFragment;
+import com.thisplace.mindrdr.view.PhotoPreviewFragment;
+import com.thisplace.mindrdr.view.UploadingFragment;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
@@ -60,18 +60,18 @@ import twitter4j.conf.ConfigurationBuilder;
 
 public class MindRdrActivity extends Activity {
 
-    public final static String DEBUG_TAG = "MindCameraActivity";
+    public final static String DEBUG_TAG = "MindRdrActivity";
 
     /*
     if FAKE_BLUETOOTH is true then no connection attempt will be made to the mind reader and all data will be simulated.
      */
-    private static final boolean FAKE_BLUETOOTH = true;
+    private static final boolean FAKE_BLUETOOTH = false;
     private static final boolean RAW_ENABLED = false;
-    private static final int LINE_START_Y = 80;
-    private static final int LINE_END_Y = 280;
-    private static final int LINE_RANGE = LINE_END_Y - LINE_START_Y;
+
+    //ACTIVITY REQUEST CODES
+    private static final int SPLASH_SCREEN_REQUEST_CODE = 0;
+    private static final int OAUTH_REQUEST_CODE = 1;
     private static final int INTENSITY_TRIGGER = 80;
-    private static final int LINE_VALUE_MULTIPLIER = LINE_RANGE / INTENSITY_TRIGGER;
     private static final int INTENSITY_CANCEL_TRIGGER = 10;
     private static final int MIND_TAKING_PHOTO = 0;
     private static final int MIND_SHARING = 1;
@@ -79,12 +79,15 @@ public class MindRdrActivity extends Activity {
     private static final int MIND_INITIALISING = 3;
     private int mMindControlState = MIND_INITIALISING;
     BluetoothAdapter bluetoothAdapter;
-    TGDevice tgDevice;
+    MindReader mindReaderService;
     private AudioManager mAudioManager;
-    private FakeBluetooth mFakeBluetooth;
+
     private Status mTwitterUpdateId = null;
     private MindSession mMindSession = new MindSession();
-
+    private MindReaderFragment mMindFragment;
+    private PhotoPreviewFragment mPhotoPreviewFragment;
+    private UploadingFragment mUploadingFragment;
+    private CameraFlashFragment mCameraFlashFragment;
 
     private final Handler handler = new Handler() {
         @Override
@@ -100,8 +103,9 @@ public class MindRdrActivity extends Activity {
                             break;
                         case TGDevice.STATE_CONNECTED:
                             Log.d("DEBUG", "Connected.");
-                            tgDevice.start();
-
+                            mindReaderService.start();
+                            initializeCamera();
+                     
                             break;
                         case TGDevice.STATE_NOT_FOUND:
                             Log.d("DEBUG", "Can't find");
@@ -115,7 +119,7 @@ public class MindRdrActivity extends Activity {
 
                     break;
                 case TGDevice.MSG_ATTENTION:
-                    Log.d("Intensity", Integer.toString(msg.arg1));
+                    //Log.d("Intensity", Integer.toString(msg.arg1));
                     mMindSession.setAttention(msg.arg1);
                     updateView();
                     break;
@@ -132,6 +136,7 @@ public class MindRdrActivity extends Activity {
             }
         }
     };
+
     private String mPhotoFile;
     private File mPictureFile;
     public PictureCallback mPicture = new PictureCallback() {
@@ -162,21 +167,10 @@ public class MindRdrActivity extends Activity {
         }
 
     };
-    private ImageView mPhotoPreview;
+
     private Camera mCamera;
     private CameraPreview mPreview;
-    private ImageView mLine;
-    private FrameLayout mBlueCover;
-    private ImageView mCameraFlash;
-    private ProgressBar mProgressSpinner;
-    private LinearLayout mSuccessView;
-    private TextView mSendText;
-    private TextView mCancelText;
-    private ImageView mPictureFrame;
-    private ImageView mTakePhoto;
-    private ImageView mSplash;
-    private ImageView mInside;
-    private ImageView mBlackBg;
+
 
     private static File getOutputMediaFile() {
 
@@ -211,22 +205,47 @@ public class MindRdrActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
-        mLine = (ImageView) findViewById(R.id.line);
-        mSplash = (ImageView) findViewById(R.id.splash);
-        mProgressSpinner = (ProgressBar) findViewById(R.id.progress_spinner);
-        mInside = (ImageView) findViewById(R.id.inside);
-        mTakePhoto = (ImageView) findViewById(R.id.take_photo);
-        mBlackBg = (ImageView) findViewById(R.id.black_bg);
-        mBlueCover = (FrameLayout) findViewById(R.id.blue_cover);
-        mSuccessView = (LinearLayout) findViewById(R.id.success);
 
-        showSplash();
+        Intent intent = new Intent(this, SplashActivity.class);
+        startActivityForResult(intent,SPLASH_SCREEN_REQUEST_CODE);
 
-        initializeCamera();
+        //initializeCamera();
 
-        setupTG();
+        //setupMindReader();
 
     }
+
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == SPLASH_SCREEN_REQUEST_CODE) {
+
+            Intent intent = new Intent(this, OAuthActivity.class);
+            startActivityForResult(intent,OAUTH_REQUEST_CODE);
+
+        }else if (requestCode == OAUTH_REQUEST_CODE) {
+
+            Log.d("MindRdrActivity","OAUTH Activity Finished");
+
+            if(resultCode == RESULT_OK) {
+
+
+                setupMindReader();
+
+                mMindFragment = MindReaderFragment.newInstance("Take Photo","Cancel");
+                getFragmentManager().beginTransaction()
+                        .add(R.id.fragment_container, mMindFragment).commit();
+
+            }else{
+
+                Log.d("MindRdrActivity","OAUTH Activity Failed to scan data");
+
+            }
+
+
+
+
+        }
+    }
+
 
     private void upload() {
         showUploadingView();
@@ -234,10 +253,13 @@ public class MindRdrActivity extends Activity {
 
     }
 
-    private void initializeCamera()
-
-    {
+    private void initializeCamera() {
         // Create an instance of Camera
+        Log.d("MindRdrActivity","initialiseCamera");
+
+
+        if(mCamera == null){
+
         mCamera = Camera.open();
 
         // Create our Preview view and set it as the content of our activity.
@@ -247,38 +269,43 @@ public class MindRdrActivity extends Activity {
         preview.removeAllViews();
         preview.addView(mPreview);
 
+        }
+
+
     }
 
     private void releaseCamera() {
+
+
+        Log.d("MindRdrActivity","releaseCamera");
+
+
         if (mCamera != null) {
             mCamera.stopPreview();
             mCamera.release();
             mCamera = null;
+            mPreview = null;
+
 
         }
     }
 
     private void initialiseMindReadings() {
 
-        if (mMindSession != null) {
-            mMindSession = null;
-        }
-
+        mMindSession = null;
         mMindSession = new MindSession();
+
     }
+
 
 
     private void updateView() {
         // check we are getting good values before hiding splash
         if (mMindControlState == MIND_INITIALISING) {
             if (mMindSession.getAttention() > 0) {
+
                 initialiseMindReadings();
-                mSplash.setVisibility(View.INVISIBLE);
                 mMindControlState = MIND_TAKING_PHOTO;
-                mLine.setVisibility(View.VISIBLE);
-                mTakePhoto.setVisibility(View.VISIBLE);
-                mBlackBg.setVisibility(View.INVISIBLE);
-                // mPreview.setVisibility(View.VISIBLE);
 
             }
             return;
@@ -286,10 +313,7 @@ public class MindRdrActivity extends Activity {
 
         if (mMindControlState != MIND_DISABLED) {
             mMindSession.updateMindData();
-
-            int value = LINE_RANGE
-                    - Math.min(LINE_RANGE, Math.round(mMindSession.getAttention() * LINE_VALUE_MULTIPLIER));
-            mLine.setTranslationY(LINE_START_Y + value);
+            mMindFragment.updateMindReading(mMindSession.getAttention());
 
             if (mMindSession.getAttention() >= INTENSITY_TRIGGER) {
                 if (mMindControlState == MIND_TAKING_PHOTO) {
@@ -298,14 +322,13 @@ public class MindRdrActivity extends Activity {
 
                 } else if (mMindControlState == MIND_SHARING) {
                     mMindControlState = MIND_DISABLED;
-                    if (tgDevice != null) {
-                        tgDevice.close();
+                    if (mindReaderService != null) {
+                        mindReaderService.close();
+                        mindReaderService = null;
                     }
                     upload();
                 }
             } else if (mMindSession.getAttention() <= INTENSITY_CANCEL_TRIGGER && mMindControlState == MIND_SHARING) {
-                mCancelText.setVisibility(View.INVISIBLE);
-                mSendText.setVisibility(View.INVISIBLE);
 
                 initializeCamera();
                 showTakePhotoView();
@@ -315,12 +338,12 @@ public class MindRdrActivity extends Activity {
 
     }
 
-    private void setupTG() {
+    private void setupMindReader() {
 
         if (FAKE_BLUETOOTH == true) {
 
-            mFakeBluetooth = new FakeBluetooth(handler);
-            handler.postDelayed(mFakeBluetooth, 1000);
+            mindReaderService = MindReaderFactory.getMindReader(null, handler);
+            handler.postDelayed((Runnable) mindReaderService, 1000);
             return;
         }
 
@@ -329,11 +352,12 @@ public class MindRdrActivity extends Activity {
             // Alert user that Bluetooth is not available
             Toast.makeText(this, "Bluetooth not available", Toast.LENGTH_LONG).show();
             finish();
-            return;
+
         } else {
             /* create the TGDevice */
-            tgDevice = new TGDevice(bluetoothAdapter, handler);
-            tgDevice.connect(RAW_ENABLED);
+            mindReaderService = MindReaderFactory.getMindReader(bluetoothAdapter, handler);
+            mindReaderService.connect(RAW_ENABLED);
+
 
         }
 
@@ -342,8 +366,9 @@ public class MindRdrActivity extends Activity {
     @Override
     public void onDestroy() {
         try {
-            if (tgDevice != null) {
-                tgDevice.close();
+            if (mindReaderService != null) {
+                mindReaderService.close();
+                mindReaderService = null;
             }
 
             releaseCamera();
@@ -365,8 +390,9 @@ public class MindRdrActivity extends Activity {
     @Override
     public void onStop() {
         try {
-            if (tgDevice != null) {
-                tgDevice.close();
+            if (mindReaderService != null) {
+                mindReaderService.close();
+                mindReaderService = null;
             }
 
             releaseCamera();
@@ -380,10 +406,24 @@ public class MindRdrActivity extends Activity {
     @Override
     public void onResume() {
         super.onResume();
+        /*
         if (mCamera == null) {
             initializeCamera();
         }
+        */
     }
+
+
+    public boolean onKeyDown(int keyCode, KeyEvent event)
+    {
+        if ((keyCode == KeyEvent.KEYCODE_BACK))
+        {
+            Log.d("MindRdrActivity","Back detected shutting down");
+            finish();
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
 
     private void takePhoto() {
 
@@ -394,13 +434,11 @@ public class MindRdrActivity extends Activity {
 
     private void showPhotoView() {
 
-        mPictureFrame = (ImageView) findViewById(R.id.picture_frame);
-        mPictureFrame.setVisibility(View.VISIBLE);
 
-        mLine = (ImageView) findViewById(R.id.line);
-        mLine.setVisibility(View.INVISIBLE);
-        mTakePhoto = (ImageView) findViewById(R.id.take_photo);
-        mTakePhoto.setVisibility(View.INVISIBLE);
+        mPhotoPreviewFragment = PhotoPreviewFragment.newInstance();
+        FragmentTransaction transaction = getFragmentManager().beginTransaction();
+        transaction.replace(R.id.fragment_container, mPhotoPreviewFragment);
+        transaction.commit();
 
         new CountDownTimer(5000, 1000) {
             @Override
@@ -416,111 +454,33 @@ public class MindRdrActivity extends Activity {
 
     private void showUploadView() {
 
-        mSendText = (TextView) findViewById(R.id.send);
-        mSendText.setText("Post to Twitter");
+        FragmentTransaction transaction = getFragmentManager().beginTransaction();
+        transaction.remove(mCameraFlashFragment);
+        transaction.commit();
+        mCameraFlashFragment = null;
 
-        mCancelText = (TextView) findViewById(R.id.cancel);
-        mCancelText.setText("Take another picture");
-
-        mCancelText.setVisibility(View.VISIBLE);
-        mSendText.setVisibility(View.VISIBLE);
-        mLine.setVisibility(View.VISIBLE);
-        mTakePhoto.setVisibility(View.VISIBLE);
-
-        mPictureFrame.setVisibility(View.INVISIBLE);
+        mMindFragment = MindReaderFragment.newInstance("Post to Twitter","Take another photo");
+        transaction = getFragmentManager().beginTransaction();
+        transaction.replace(R.id.fragment_container, mMindFragment);
+        transaction.commit();
 
         mMindControlState = MIND_SHARING;
 
     }
 
     private void showUploadingView() {
-        mCancelText.setVisibility(View.INVISIBLE);
-        mSendText.setVisibility(View.INVISIBLE);
 
-        mBlueCover.setTranslationY(360);
-        mBlueCover.setVisibility(View.VISIBLE);
-        mProgressSpinner.setVisibility(View.VISIBLE);
+        mMindFragment.hideActionText();
+        mUploadingFragment = UploadingFragment.newInstance();
+        getFragmentManager().beginTransaction()
+                .add(R.id.fragment_container, mUploadingFragment).commit();
 
-        AnimatorSet set = new AnimatorSet();
-        ObjectAnimator animation = ObjectAnimator.ofFloat(mBlueCover, "translationY", 0);
-        animation.setDuration(1000);
-
-        animation.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-
-            }
-        });
-        set.play(animation);
-        set.start();
     }
 
-    // intro splash screen fades
-
-    private void showSplash() {
-        mMindControlState = MIND_DISABLED;
-        mSplash.setVisibility(View.INVISIBLE);
-        mInside.setVisibility(View.VISIBLE);
-        mInside.setImageAlpha(0);
-
-        AnimatorSet set = new AnimatorSet();
-        ObjectAnimator animation = ObjectAnimator.ofInt(mInside, "ImageAlpha", 0, 100);
-        animation.setDuration(700);
-
-        animation.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                fadeOutInside();
-            }
-        });
-
-        set.play(animation);
-        set.start();
-    }
-
-    private void fadeOutInside() {
-        AnimatorSet set = new AnimatorSet();
-        ObjectAnimator animation = ObjectAnimator.ofInt(mInside, "ImageAlpha", 100, 0);
-        animation.setDuration(700);
-        animation.setStartDelay(2000);
-
-        animation.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                fadeInSplash();
-            }
-        });
-
-        set.play(animation);
-        set.start();
-    }
-
-    private void fadeInSplash() {
-        mSplash.setImageAlpha(0);
-        mSplash.setVisibility(View.VISIBLE);
-        mInside.setVisibility(View.INVISIBLE);
-
-        AnimatorSet set = new AnimatorSet();
-        // Using property animation
-        ObjectAnimator animation = ObjectAnimator.ofInt(mSplash, "ImageAlpha", 0, 100);
-        animation.setDuration(700);
-        animation.setStartDelay(1000);
-
-        animation.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                mMindControlState = MIND_INITIALISING;
-            }
-        });
-        set.play(animation);
-        set.start();
-    }
 
     private void showSuccessView() {
 
-        mProgressSpinner.setVisibility(View.INVISIBLE);
-        mSuccessView.setVisibility(View.VISIBLE);
-
+        mUploadingFragment.showSuccess();
         initializeCamera();
 
         new CountDownTimer(5000, 1000) {
@@ -530,6 +490,7 @@ public class MindRdrActivity extends Activity {
 
             @Override
             public void onFinish() {
+
                 showTakePhotoView();
             }
         }.start();
@@ -537,31 +498,30 @@ public class MindRdrActivity extends Activity {
     }
 
     private void showTakePhotoView() {
-        mBlueCover.setVisibility(View.INVISIBLE);
-        mProgressSpinner.setVisibility(View.VISIBLE);
-        mSuccessView.setVisibility(View.INVISIBLE);
-        mCameraFlash.setVisibility(View.INVISIBLE);
 
-        mLine.setVisibility(View.VISIBLE);
-        mTakePhoto.setVisibility(View.VISIBLE);
+        mMindFragment = null;
+        mMindFragment = MindReaderFragment.newInstance("Take Photo","Cancel");
+        FragmentTransaction transaction = getFragmentManager().beginTransaction();
+        transaction.remove(mUploadingFragment);
+        mUploadingFragment = null;
+        transaction.replace(R.id.fragment_container, mMindFragment);
+        transaction.commit();
 
         mMindControlState = MIND_INITIALISING;
-        // mSplash.setVisibility(View.VISIBLE);
-        setupTG();
+
+        setupMindReader();
 
     }
 
     private void doCameraFlash() {
-        mCameraFlash = (ImageView) findViewById(R.id.camera_flash);
-        mCameraFlash.setVisibility(View.VISIBLE);
-        mCameraFlash.setImageAlpha(100);
-        Animation cameraFlash = AnimationUtils.loadAnimation(this, R.anim.camera_flash);
-        mCameraFlash.startAnimation(cameraFlash);
+
+        mCameraFlashFragment = CameraFlashFragment.newInstance();
+        getFragmentManager().beginTransaction()
+                .add(R.id.fragment_container, mCameraFlashFragment).commit();
 
     }
 
     private class PhotoUploaderAsyncTask extends AsyncTask<String, Integer, String> {
-        private static final String DEBUG_TAG = "PhotoUploaderAsyncTask";
 
         int serverResponseCode = 0;
         Twitter twitter;
@@ -575,7 +535,7 @@ public class MindRdrActivity extends Activity {
         @Override
         protected String doInBackground(String... params) {
 
-            return uploadToTwitter();
+                return uploadToTwitter();
 
         }
 
@@ -588,7 +548,7 @@ public class MindRdrActivity extends Activity {
         @Override
         protected void onPostExecute(String result) {
             super.onPostExecute(result);
-
+            // uploadResult(result.toString());
             showSuccessView();
         }
 
@@ -614,13 +574,14 @@ public class MindRdrActivity extends Activity {
 
         public String uploadToTwitter() {
 
-            ConfigurationBuilder cb = new ConfigurationBuilder();
+            OAuthData oAuthData = OAuthData.getInstance();
 
-            //needs valid keys and secrets
-            cb.setOAuthConsumerKey("*********");
-            cb.setOAuthConsumerSecret("*********");
-            cb.setOAuthAccessToken("************");
-            cb.setOAuthAccessTokenSecret("*************");
+            ConfigurationBuilder cb = new ConfigurationBuilder();
+            cb.setOAuthConsumerKey(oAuthData.getConsumerKey());
+            cb.setOAuthConsumerSecret(oAuthData.getConsumerSecret());
+            cb.setOAuthAccessToken(oAuthData.getAccessToken());
+            cb.setOAuthAccessTokenSecret(oAuthData.getAccessTokenSecret());
+
 
             TwitterFactory tf = new TwitterFactory(cb.build());
             twitter = tf.getInstance();
@@ -632,6 +593,7 @@ public class MindRdrActivity extends Activity {
             Log.d("mindrdrRecordId", mindrdrRecord[0]);
 
             try {
+                //User user = twitter.verifyCredentials();
                 StatusUpdate status = new StatusUpdate(tweet);
                 status.setMedia(mPictureFile);
                 twitter4j.Status tStatus = twitter.updateStatus(status);
@@ -649,10 +611,9 @@ public class MindRdrActivity extends Activity {
 
         private String updateRecordWithTweetId(String recordId, String tweetId) {
 
-            //used to link a tweet with a private database
             HttpClient httpclient = new DefaultHttpClient();
             HttpPost httppost = new HttpPost(
-                    "http://domain.com/updateData");
+                    "http://mindrdr-service");
 
             try {
                 List<NameValuePair> nameValuePairs = new ArrayList<NameValuePair>(2);
@@ -678,7 +639,7 @@ public class MindRdrActivity extends Activity {
 
 
             HttpClient httpclient = new DefaultHttpClient();
-            HttpPost httppost = new HttpPost("http://domain.com/addData");
+            HttpPost httppost = new HttpPost("http://mindrdr-service");
 
             try {
 
@@ -698,6 +659,8 @@ public class MindRdrActivity extends Activity {
             }
 
         }
+
+
 
 
     }

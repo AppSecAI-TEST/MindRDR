@@ -3,10 +3,6 @@
 
     <string name="app_name">MindRDR</string>
     <string name="glass_voice_trigger">mind reader</string>
-    <string name="title_activity_take_photo">TakePhotoActivity</string>
-    <string name="action_settings">Settings</string>
-    <string name="title_activity_photo_uploader">PhotoUploaderActivity</string>
-    <string name="line_description">Progress marker for mind reading level</string>
     <string name="line_id">lineProgressMarker</string>
     <string name="photo_preview_id">photoPreview</string>
     <string name="post_twitter">Post to Twitter</string>
