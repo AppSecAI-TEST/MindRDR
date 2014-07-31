@@ -5,6 +5,8 @@ MindRDR is an application for Google Glass that uses a mind reader to take and p
 
 If you want to get in touch for whatever reason email mindrdr@thisplace.com
 
+To download a working compiled version you can link to your Twitter account visit http://mindrdr.thisplace.com/download
+
 If you want to compile and use this code you'll need:
 
 * Google Glass
@@ -21,5 +23,4 @@ Error handling in general is minimal effort.
 
 There are webservice dependencies that could change.
 
-If you have the right hardware and you want to use the app then we'll be making available a compiled version with Twitter linking outside of GitHub soon.
 
